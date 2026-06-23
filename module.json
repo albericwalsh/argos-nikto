@@ -2,7 +2,7 @@
     "id": "nikto",
     "name": "Nikto",
     "version": "1.0",
-    "repository": "",
+    "repository": "https://github.com/albericwalsh/argos-nikto",
     "category": "Web Scanning",
     "description": "Nikto est un scanner de vulnérabilités web open source qui effectue des tests complets sur les serveurs HTTP/HTTPS. Il détecte les fichiers et programmes potentiellement dangereux, les versions de serveurs obsolètes, les problèmes de configuration, les en-têtes de sécurité manquants et plus de 6700 éléments potentiellement dangereux.",
     "parameters": [
