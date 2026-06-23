@@ -1,0 +1,263 @@
+{#
+  render.html — Argos module renderer : nikto
+  Context variables injected by report_engine:
+    step       : dict  — the raw step data from mission result
+    step_id    : str   — e.g. "step2"
+    step_index : int   — 0-based index
+    module     : dict  — parsed module.json
+#}
+{#
+  output est une liste de dicts Finding sérialisés :
+  { id, method, path, description, severity, category }
+  Si plusieurs ports ont été scannés, path est préfixé par "[:PORT]"
+#}
+{% set raw_findings = (step.get("output") or []) | tojson | fromjson %}
+
+{# Extraction de la cible scannée depuis les inputs/args du step #}
+{% set step_args = step.get("args") or step.get("input") or {} %}
+{% set target = step_args.get("target") if step_args is mapping else None %}
+{% if target is mapping or target is iterable and target is not string %}
+  {% set target = none %}
+{% endif %}
+
+{# Extraction du port depuis le préfixe "[:PORT]path" et nettoyage du path #}
+{% set findings = [] %}
+{% for f in raw_findings %}
+  {% set path = f.get("path", "/") %}
+  {% set port = "" %}
+  {% if path.startswith("[:") and "]" in path %}
+    {% set port = path[2:path.index("]")] %}
+    {% set path = path[path.index("]") + 1:] %}
+  {% endif %}
+  {% set _ = findings.append(dict(f, path=path, port=port)) %}
+{% endfor %}
+
+{% set ports_seen = findings | map(attribute="port") | select | unique | list %}
+
+{% set n_high   = findings | selectattr("severity", "equalto", "high")   | list | length %}
+{% set n_medium = findings | selectattr("severity", "equalto", "medium") | list | length %}
+{% set n_low    = findings | selectattr("severity", "equalto", "low")    | list | length %}
+{% set n_info   = findings | selectattr("severity", "equalto", "info")   | list | length %}
+
+<div class="mod-section">
+  <div class="mod-header">
+    <div class="mod-header-left">
+      <span class="mod-icon">⬡</span>
+      <div>
+        <div class="mod-name">{{ module.name }}</div>
+        <div class="mod-meta">
+          {{ module.category }} · {{ step_id }}
+          {% if target %}
+            · cible: <span class="target-tag">{{ target }}</span>
+          {% endif %}
+          {% if ports_seen | length > 1 %}
+            · ports: {{ ports_seen | join(", ") }}
+          {% elif ports_seen | length == 1 %}
+            · port: {{ ports_seen[0] }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="mod-stats">
+      {% if n_high > 0 %}
+      <div class="mod-stat">
+        <span class="mod-stat-num sev-high">{{ n_high }}</span>
+        <span class="mod-stat-lbl">high</span>
+      </div>
+      {% endif %}
+      {% if n_medium > 0 %}
+      <div class="mod-stat">
+        <span class="mod-stat-num sev-medium">{{ n_medium }}</span>
+        <span class="mod-stat-lbl">medium</span>
+      </div>
+      {% endif %}
+      {% if n_low > 0 %}
+      <div class="mod-stat">
+        <span class="mod-stat-num sev-low">{{ n_low }}</span>
+        <span class="mod-stat-lbl">low</span>
+      </div>
+      {% endif %}
+      <div class="mod-stat">
+        <span class="mod-stat-num" style="color:var(--muted)">{{ n_info }}</span>
+        <span class="mod-stat-lbl">info</span>
+      </div>
+      <div class="mod-stat">
+        <span class="mod-stat-num" style="color:var(--accent)">{{ findings | length }}</span>
+        <span class="mod-stat-lbl">total</span>
+      </div>
+    </div>
+  </div>
+
+  {% if findings %}
+
+  {# Barre de sévérité visuelle #}
+  {% set total = findings | length %}
+  <div class="sev-bar-wrap">
+    {% if n_high > 0 %}
+    <div class="sev-bar-seg sev-bar-high"   style="width:{{ (n_high   / total * 100) | round(1) }}%"></div>
+    {% endif %}
+    {% if n_medium > 0 %}
+    <div class="sev-bar-seg sev-bar-medium" style="width:{{ (n_medium / total * 100) | round(1) }}%"></div>
+    {% endif %}
+    {% if n_low > 0 %}
+    <div class="sev-bar-seg sev-bar-low"    style="width:{{ (n_low    / total * 100) | round(1) }}%"></div>
+    {% endif %}
+    {% if n_info > 0 %}
+    <div class="sev-bar-seg sev-bar-info"   style="width:{{ (n_info   / total * 100) | round(1) }}%"></div>
+    {% endif %}
+  </div>
+
+  <div class="table-wrap">
+    <table class="mod-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Sévérité</th>
+          <th>Catégorie</th>
+          {% if target %}
+          <th>Cible</th>
+          {% endif %}
+          {% if ports_seen | length > 1 %}
+          <th>Port</th>
+          {% endif %}
+          <th>Méthode</th>
+          <th>Chemin</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in findings | sort(attribute="severity", reverse=False) %}
+        {% set sev = f.get("severity", "info") %}
+        <tr class="row-sev-{{ sev }}">
+          <td><span class="finding-id">{{ f.get("id", "") }}</span></td>
+          <td><span class="sev-badge sev-{{ sev }}">{{ sev | upper }}</span></td>
+          <td><span class="cat-tag cat-{{ f.get('category', 'other') }}">{{ f.get("category", "other") }}</span></td>
+          {% if target %}
+          <td class="cell-mono">
+            {{ target }}{% if f.get("port") %}:{{ f.get("port") }}{% endif %}
+          </td>
+          {% endif %}
+          {% if ports_seen | length > 1 %}
+          <td><span class="cat-tag">{{ f.get("port", "") }}</span></td>
+          {% endif %}
+          <td><span class="method-tag method-{{ f.get('method', 'GET') | lower }}">{{ f.get("method", "GET") }}</span></td>
+          <td class="cell-mono cell-path" title="{{ f.get('path', '') }}">{{ f.get("path", "/") }}</td>
+          <td class="cell-desc">{{ f.get("description", "") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="mod-empty">Aucune vulnérabilité détectée.</div>
+  {% endif %}
+</div>
+
+<style>
+  .mod-section { margin-bottom: 28px; }
+
+  /* ── Header ─────────────────────────────────────────── */
+  .mod-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+  }
+  .mod-header-left { display: flex; align-items: center; gap: 12px; }
+  .mod-icon { font-size: 20px; color: var(--accent); line-height: 1; opacity: .7; }
+  .mod-name { font-size: 13px; font-weight: 600; }
+  .mod-meta { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 1px; }
+
+  .target-tag { color: var(--accent); }
+
+  .mod-stats { display: flex; gap: 20px; align-items: flex-end; }
+  .mod-stat  { text-align: right; }
+  .mod-stat-num { font-family: var(--font-mono); font-size: 18px; font-weight: 700; display: block; line-height: 1; }
+  .mod-stat-lbl { font-family: var(--font-mono); font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+
+  /* ── Severity colours ───────────────────────────────── */
+  .sev-high   { color: #ff4d4d !important; }
+  .sev-medium { color: #f5a623 !important; }
+  .sev-low    { color: #4da6ff !important; }
+
+  /* ── Severity bar ───────────────────────────────────── */
+  .sev-bar-wrap {
+    display: flex; height: 3px; width: 100%;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .sev-bar-seg  { height: 100%; transition: width .3s; }
+  .sev-bar-high   { background: #ff4d4d; }
+  .sev-bar-medium { background: #f5a623; }
+  .sev-bar-low    { background: #4da6ff; }
+  .sev-bar-info   { background: #2a2a2e; }
+
+  /* ── Table ──────────────────────────────────────────── */
+  .table-wrap { border: 1px solid var(--border); border-top: none; border-radius: 0 0 4px 4px; overflow: hidden; }
+  .mod-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .mod-table th {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); padding: 8px 12px;
+    text-align: left; background: var(--surface2, #1c1c20);
+    border-bottom: 1px solid var(--border);
+  }
+  .mod-table td {
+    padding: 8px 12px; border-bottom: 1px solid rgba(42,42,46,.5); vertical-align: top;
+  }
+  .mod-table tr:last-child td { border-bottom: none; }
+
+  /* Row background tint by severity */
+  .row-sev-high   td { background: rgba(255,77,77,.03); }
+  .row-sev-medium td { background: rgba(245,166,35,.03); }
+  .row-sev-low    td { background: rgba(77,166,255,.03); }
+  .row-sev-info   td { background: transparent; }
+  .mod-table tr:hover td { filter: brightness(1.08); }
+
+  /* ── Badges & tags ──────────────────────────────────── */
+  .finding-id {
+    font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+  }
+  .sev-badge {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    text-transform: uppercase; padding: 2px 6px; border-radius: 3px;
+    white-space: nowrap;
+  }
+  .sev-badge.sev-high   { background: rgba(255,77,77,.12);  color: #ff4d4d;  border: 1px solid rgba(255,77,77,.3); }
+  .sev-badge.sev-medium { background: rgba(245,166,35,.12); color: #f5a623;  border: 1px solid rgba(245,166,35,.3); }
+  .sev-badge.sev-low    { background: rgba(77,166,255,.12); color: #4da6ff;  border: 1px solid rgba(77,166,255,.3); }
+  .sev-badge.sev-info   { background: rgba(107,107,120,.1); color: #6b6b78;  border: 1px solid rgba(107,107,120,.2); }
+
+  .cat-tag {
+    font-family: var(--font-mono); font-size: 9px; color: var(--muted);
+    background: rgba(255,255,255,.04); border: 1px solid var(--border);
+    border-radius: 3px; padding: 1px 5px; white-space: nowrap;
+  }
+
+  .method-tag {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+    padding: 1px 5px; border-radius: 3px; white-space: nowrap;
+  }
+  .method-get    { color: var(--accent); background: rgba(0,229,160,.08); border: 1px solid rgba(0,229,160,.2); }
+  .method-post   { color: #f5a623;       background: rgba(245,166,35,.08); border: 1px solid rgba(245,166,35,.2); }
+  .method-head   { color: #4da6ff;       background: rgba(77,166,255,.08); border: 1px solid rgba(77,166,255,.2); }
+  .method-put,
+  .method-delete { color: #ff4d4d;       background: rgba(255,77,77,.08);  border: 1px solid rgba(255,77,77,.2); }
+  .method-options,
+  .method-trace  { color: var(--muted);  background: rgba(255,255,255,.04); border: 1px solid var(--border); }
+
+  .cell-mono  { font-family: var(--font-mono); font-size: 11px; }
+  .cell-path  { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .cell-desc  { font-size: 11px; line-height: 1.5; color: var(--text, #e8e8ec); max-width: 340px; }
+
+  .mod-empty {
+    padding: 32px; text-align: center; color: var(--muted);
+    font-family: var(--font-mono); font-size: 11px;
+    border: 1px solid var(--border); border-top: none; border-radius: 0 0 4px 4px;
+  }
+</style>

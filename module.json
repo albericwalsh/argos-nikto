@@ -1,0 +1,40 @@
+{
+    "id": "nikto",
+    "name": "Nikto",
+    "version": "1.0",
+    "repository": "",
+    "category": "Web Scanning",
+    "description": "Nikto est un scanner de vulnérabilités web open source qui effectue des tests complets sur les serveurs HTTP/HTTPS. Il détecte les fichiers et programmes potentiellement dangereux, les versions de serveurs obsolètes, les problèmes de configuration, les en-têtes de sécurité manquants et plus de 6700 éléments potentiellement dangereux.",
+    "parameters": [
+        {
+            "name": "target",
+            "type": "string",
+            "description": "L'URL ou l'adresse IP de la cible à scanner (ex: http://192.168.1.1, https://example.com)."
+        },
+        {
+            "name": "port",
+            "type": "string",
+            "description": "Port à scanner. Si omis, Nikto utilise 80 pour HTTP et 443 pour HTTPS. Exemple : '8080'."
+        },
+        {
+            "name": "options",
+            "type": "string",
+            "description": "Options supplémentaires passées à Nikto (ex: '-Tuning 1234', '-timeout 10', '-maxtime 60s'). Séparées par espaces."
+        }
+    ],
+    "output": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "id":          { "type": "string",  "description": "Identifiant unique de la vulnérabilité/finding (OSVDB, CVE ou id interne Nikto)." },
+                "method":      { "type": "string",  "description": "Méthode HTTP utilisée pour le test (GET, POST, HEAD...)." },
+                "path":        { "type": "string",  "description": "Chemin HTTP testé (ex: /admin, /phpinfo.php)." },
+                "description": { "type": "string",  "description": "Description détaillée de la vulnérabilité ou de l'information trouvée." },
+                "severity":    { "type": "string",  "description": "Niveau de sévérité estimé : 'info', 'low', 'medium', 'high'." },
+                "category":    { "type": "string",  "description": "Catégorie du finding : 'config', 'injection', 'disclosure', 'auth', 'header', 'outdated', 'other'." }
+            }
+        },
+        "description": "Liste des vulnérabilités et informations trouvées par Nikto."
+    }
+}
